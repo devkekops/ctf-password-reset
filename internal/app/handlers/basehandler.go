@@ -7,42 +7,27 @@ import (
 
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/cors"
 
-	"github.com/devkekops/ctf-signature/internal/app/storage"
+	"github.com/devkekops/ctf-password-reset/internal/app/storage"
 )
 
 type BaseHandler struct {
 	mux       *chi.Mux
 	secretKey string
-	fs        http.Handler
-	userRepo  storage.PaymentRepository
+	userRepo  storage.UserRepository
 }
 
-func NewBaseHandler(userRepo storage.userRepository, secretKey string) *chi.Mux {
-	cwd, _ := os.Getwd()
-	root := filepath.Join(cwd, "/static")
-	fs := http.FileServer(http.Dir(root))
-
+func NewBaseHandler(userRepo storage.UserRepository, secretKey string) *chi.Mux {
 	bh := &BaseHandler{
 		mux:       chi.NewMux(),
 		secretKey: secretKey,
-		fs:        fs,
 		userRepo:  userRepo,
 	}
 
 	bh.mux.Use(middleware.Logger)
 
-	bh.mux.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"https://*", "http://*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: false,
-		MaxAge:           300, // Maximum value not ignored by any of major browsers
-	}))
-
-	bh.mux.Handle("/*", fs)
+	bh.mux.Handle("/*", bh.index())
+	bh.mux.Handle("/admin", bh.admin())
 	bh.mux.Route("/api", func(r chi.Router) {
 		r.Post("/signin", bh.signin())
 		r.Get("/confirm_signin", bh.confirmSignin())
@@ -55,6 +40,25 @@ func NewBaseHandler(userRepo storage.userRepository, secretKey string) *chi.Mux 
 
 	return bh.mux
 }
+
+func (bh *BaseHandler) index() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		cwd, _ := os.Getwd()
+		root := filepath.Join(cwd, "/static")
+
+		http.ServeFile(w, req, root+"/index.html")
+	}
+}
+
+func (bh *BaseHandler) admin() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		cwd, _ := os.Getwd()
+		root := filepath.Join(cwd, "/static")
+
+		http.ServeFile(w, req, root+"/admin.html")
+	}
+}
+
 func (bh *BaseHandler) signin() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 
