@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -61,7 +62,10 @@ func (bh *BaseHandler) admin() http.HandlerFunc {
 
 func (bh *BaseHandler) signin() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-
+		_, err := bh.userRepo.CreateUser("dmitriy.tereshin@sbermarket.ru", "test")
+		if err != nil {
+			log.Println(err)
+		}
 	}
 }
 
@@ -85,7 +89,10 @@ func (bh *BaseHandler) account() http.HandlerFunc {
 
 func (bh *BaseHandler) resetPass() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-
+		_, err := bh.userRepo.Reset("dmitriy.tereshin@sbermarket.ru")
+		if err != nil {
+			log.Println(err)
+		}
 	}
 }
 

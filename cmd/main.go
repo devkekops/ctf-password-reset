@@ -11,15 +11,20 @@ import (
 
 func main() {
 	var cfg config.Config
+
 	err := env.Parse(&cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	flag.StringVar(&cfg.ServerAddress, "a", cfg.ServerAddress, "server address")
-	flag.StringVar(&cfg.AdminEmail, "k", cfg.AdminEmail, "secret key")
+	flag.StringVar(&cfg.SecretKey, "k", cfg.SecretKey, "secret key")
 	flag.StringVar(&cfg.AdminEmail, "e", cfg.AdminEmail, "admin email")
-	flag.StringVar(&cfg.AdminPassword, "p", cfg.AdminPassword, "admin password")
+	flag.StringVar(&cfg.AdminPassword, "c", cfg.AdminPassword, "admin password")
+	flag.StringVar(&cfg.SMTPHost, "h", cfg.SMTPHost, "smtp host")
+	flag.StringVar(&cfg.SMTPLogin, "l", cfg.SMTPLogin, "smtp login")
+	flag.StringVar(&cfg.SMTPPassword, "p", cfg.SMTPPassword, "smtp password")
+	flag.StringVar(&cfg.FromEmail, "f", cfg.FromEmail, "from email")
 	flag.Parse()
 
 	log.Fatal(server.Serve(&cfg))

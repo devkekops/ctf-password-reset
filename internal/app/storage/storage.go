@@ -2,9 +2,12 @@ package storage
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/devkekops/ctf-password-reset/internal/app/client"
 )
 
 var ErrUserAlreadyExists = errors.New("user already exists")
@@ -13,6 +16,7 @@ var ErrConfirmationCodeIncorrect = errors.New("confirmation code incorrect")
 var ErrUserDoesNotExist = errors.New("user doesn't exists")
 var ErrUserDoesNotConfirmed = errors.New("user doesn't confirmed")
 var ErrPasswordIncorrect = errors.New("password incorrect")
+var ErrCanNotSendEmail = errors.New("can not send email")
 
 type User struct {
 	ID               int       `json:"id"`
@@ -26,19 +30,21 @@ type User struct {
 
 type UserRepository interface {
 	//GetUserByID(int64) User
-	CreateUser(string, string) (User, error)
-	ConfirmUser(string, string) error
-	AuthUser(string, string) (int, error)
-	Reset(string) (User, error)
-	UpdatePassword(string, string, string) error
+	CreateUser(email string, password string) (User, error)
+	ConfirmUser(email string, confirmationCode string) error
+	AuthUser(email string, password string) (int, error)
+	Reset(email string) (User, error)
+	UpdatePassword(email string, password string, confirmationCode string) error
 }
 
 type UserRepo struct {
 	mutex          sync.RWMutex
+	serverAddress  string
+	client         client.Client
 	emailToUserMap map[string]User
 }
 
-func NewUserRepo(adminEmail string, adminPassword string) *UserRepo {
+func NewUserRepo(adminEmail string, adminPassword string, serverAddress string, client client.Client) *UserRepo {
 	emailToUserMap := make(map[string]User)
 
 	adminUser := User{
@@ -53,6 +59,9 @@ func NewUserRepo(adminEmail string, adminPassword string) *UserRepo {
 	emailToUserMap[adminEmail] = adminUser
 
 	return &UserRepo{
+		mutex:          sync.RWMutex{},
+		serverAddress:  serverAddress,
+		client:         client,
 		emailToUserMap: emailToUserMap,
 	}
 }
@@ -74,6 +83,14 @@ func generateOTP(length int) (string, error) {
 	return string(buffer), nil
 }
 
+func generateLink(serverAddress string, path string, email string, otp string) string {
+	verification := base64.StdEncoding.EncodeToString([]byte("email=" + email + "code=" + otp))
+
+	link := "https://" + serverAddress + "/" + path + "?verification=" + verification
+
+	return link
+}
+
 func (r *UserRepo) CreateUser(email string, password string) (User, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -83,8 +100,13 @@ func (r *UserRepo) CreateUser(email string, password string) (User, error) {
 	}
 
 	otp, err := generateOTP(6)
-	if err == nil {
+	if err != nil {
 		return User{}, err
+	}
+
+	err = r.client.SendMail(email, "Email Confirmation", "This is your email confirmation link:\n"+generateLink(r.serverAddress, "confirm_signin", email, otp))
+	if err != nil {
+		return User{}, ErrCanNotSendEmail
 	}
 
 	newUser := User{
@@ -148,8 +170,13 @@ func (r *UserRepo) Reset(email string) (User, error) {
 		return User{}, ErrUserDoesNotExist
 	} else {
 		otp, err := generateOTP(6)
-		if err == nil {
+		if err != nil {
 			return User{}, err
+		}
+
+		err = r.client.SendMail(email, "Reset Password", "This is your reset password link:\n"+generateLink(r.serverAddress, "confirm_reset_pass", email, otp))
+		if err != nil {
+			return User{}, ErrCanNotSendEmail
 		}
 
 		user.ConfirmationCode = otp
