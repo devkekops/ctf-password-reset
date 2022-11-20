@@ -30,10 +30,10 @@ type User struct {
 
 type UserRepository interface {
 	//GetUserByID(int64) User
-	CreateUser(email string, password string) (User, error)
+	CreateUser(email string, password string) (string, error)
 	ConfirmUser(email string, confirmationCode string) error
-	AuthUser(email string, password string) (int, error)
-	Reset(email string) (User, error)
+	AuthUser(email string, password string) (User, error)
+	Reset(email string) (string, error)
 	UpdatePassword(email string, password string, confirmationCode string) error
 }
 
@@ -84,29 +84,29 @@ func generateOTP(length int) (string, error) {
 }
 
 func generateLink(serverAddress string, path string, email string, otp string) string {
-	verification := base64.StdEncoding.EncodeToString([]byte("email=" + email + "code=" + otp))
+	confirmation := base64.StdEncoding.EncodeToString([]byte("email=" + email + "&code=" + otp))
 
-	link := "https://" + serverAddress + "/" + path + "?verification=" + verification
+	link := "http://" + serverAddress + "/" + path + "?confirmation=" + confirmation
 
 	return link
 }
 
-func (r *UserRepo) CreateUser(email string, password string) (User, error) {
+func (r *UserRepo) CreateUser(email string, password string) (string, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	if user, ok := r.emailToUserMap[email]; ok {
-		return user, ErrUserAlreadyExists
+		return user.Email, ErrUserAlreadyExists
 	}
 
 	otp, err := generateOTP(6)
 	if err != nil {
-		return User{}, err
+		return "", err
 	}
 
 	err = r.client.SendMail(email, "Email Confirmation", "This is your email confirmation link:\n"+generateLink(r.serverAddress, "confirm_signin", email, otp))
 	if err != nil {
-		return User{}, ErrCanNotSendEmail
+		return "", ErrCanNotSendEmail
 	}
 
 	newUser := User{
@@ -121,7 +121,7 @@ func (r *UserRepo) CreateUser(email string, password string) (User, error) {
 
 	r.emailToUserMap[newUser.Email] = newUser
 
-	return newUser, nil
+	return newUser.Email, nil
 }
 
 func (r *UserRepo) ConfirmUser(email string, confirmationCode string) error {
@@ -138,49 +138,54 @@ func (r *UserRepo) ConfirmUser(email string, confirmationCode string) error {
 			return ErrConfirmationCodeIncorrect
 		}
 		user.ConfirmationCode = ""
+		user.Confirmed = true
+
+		r.emailToUserMap[user.Email] = user
 
 		return nil
 	}
 }
 
-func (r *UserRepo) AuthUser(email string, password string) (int, error) {
+func (r *UserRepo) AuthUser(email string, password string) (User, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
 	if user, ok := r.emailToUserMap[email]; !ok {
-		return 0, ErrUserDoesNotExist
+		return User{}, ErrUserDoesNotExist
 	} else {
 		if !user.Confirmed {
-			return 0, ErrUserDoesNotConfirmed
+			return User{}, ErrUserDoesNotConfirmed
 		}
 
 		if user.Password != password {
-			return 0, ErrPasswordIncorrect
+			return User{}, ErrPasswordIncorrect
 		}
 
-		return user.ID, nil
+		return user, nil
 	}
 }
 
-func (r *UserRepo) Reset(email string) (User, error) {
+func (r *UserRepo) Reset(email string) (string, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	if user, ok := r.emailToUserMap[email]; !ok {
-		return User{}, ErrUserDoesNotExist
+		return "", ErrUserDoesNotExist
 	} else {
 		otp, err := generateOTP(6)
 		if err != nil {
-			return User{}, err
+			return "", err
 		}
 
 		err = r.client.SendMail(email, "Reset Password", "This is your reset password link:\n"+generateLink(r.serverAddress, "confirm_reset_pass", email, otp))
 		if err != nil {
-			return User{}, ErrCanNotSendEmail
+			return "", ErrCanNotSendEmail
 		}
 
 		user.ConfirmationCode = otp
-		return user, nil
+		r.emailToUserMap[user.Email] = user
+
+		return user.Email, nil
 	}
 }
 
@@ -196,6 +201,7 @@ func (r *UserRepo) UpdatePassword(email string, password string, confirmationCod
 		}
 
 		user.Password = password
+		r.emailToUserMap[user.Email] = user
 
 		return nil
 	}
