@@ -99,7 +99,7 @@ func (r *UserRepo) CreateUser(email string, password string) (string, error) {
 		return user.Email, ErrUserAlreadyExists
 	}
 
-	otp, err := generateOTP(6)
+	otp, err := generateOTP(4)
 	if err != nil {
 		return "", err
 	}
@@ -172,7 +172,7 @@ func (r *UserRepo) Reset(email string) (string, error) {
 	if user, ok := r.emailToUserMap[email]; !ok {
 		return "", ErrUserDoesNotExist
 	} else {
-		otp, err := generateOTP(6)
+		otp, err := generateOTP(4)
 		if err != nil {
 			return "", err
 		}

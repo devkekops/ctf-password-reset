@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -143,8 +142,6 @@ func (bh *BaseHandler) confirmSignin() http.HandlerFunc {
 			log.Println(ErrConfirmationIncorrect)
 			return
 		}
-		fmt.Println(emailParams[1])
-		fmt.Println(codeParams[1])
 
 		err = bh.userRepo.ConfirmUser(emailParams[1], codeParams[1])
 		if err != nil {
@@ -282,8 +279,6 @@ func (bh *BaseHandler) confirmResetPassPost() http.HandlerFunc {
 			log.Println(ErrConfirmationIncorrect)
 			return
 		}
-		fmt.Println(emailParams[1])
-		fmt.Println(codeParams[1])
 
 		if err := req.ParseForm(); err != nil {
 			msg := Msg{"", true, err.Error()}
