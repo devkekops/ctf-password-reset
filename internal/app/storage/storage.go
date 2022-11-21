@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,7 +67,7 @@ func generateOTP(length int) (string, error) {
 func generateLink(serverAddress string, path string, email string, otp string) string {
 	confirmation := base64.StdEncoding.EncodeToString([]byte("email=" + email + "&code=" + otp))
 
-	link := "http://" + serverAddress + "/" + path + "?confirmation=" + confirmation
+	link := "http://" + strings.TrimRight(serverAddress, ":") + "/" + path + "?confirmation=" + confirmation
 
 	return link
 }
