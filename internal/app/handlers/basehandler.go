@@ -28,6 +28,15 @@ var ErrConfirmationIncorrect = errors.New("confirmation incorrect")
 var ErrWrongDomain = errors.New("use your @sbermarket.ru email")
 var ErrInvalidUserIDInContext = errors.New("invalid userID in context")
 
+const (
+	signin             = "signin.html"
+	confirm_signin     = "confirm_signin.html"
+	login              = "login.html"
+	reset_pass         = "reset_pass.hmtl"
+	confirm_reset_pass = "confirm_reset_pass.html"
+	index              = "index.html"
+)
+
 type BaseHandler struct {
 	mux               *chi.Mux
 	secretKey         string
@@ -81,47 +90,55 @@ func NewBaseHandler(userRepo storage.UserRepository, secretKey string) *chi.Mux 
 
 	bh.mux.Use(middleware.Logger)
 
-	bh.mux.Get("/signin", bh.signin())
-	bh.mux.Post("/signin", bh.signinPost())
-	bh.mux.Get("/confirm_signin", bh.confirmSignin())
+	bh.mux.Get("/signin", bh.signin(signin))
+	bh.mux.Post("/signin", bh.signinPost(signin))
+	bh.mux.Get("/confirm_signin", bh.confirmSignin(confirm_signin))
 
-	bh.mux.Get("/login", bh.login())
-	bh.mux.Post("/login", bh.loginPost())
+	bh.mux.Get("/login", bh.login(login))
+	bh.mux.Post("/login", bh.loginPost(login))
 
-	bh.mux.Get("/reset_pass", bh.resetPass())
-	bh.mux.Post("/reset_pass", bh.resetPassPost())
+	bh.mux.Get("/reset_pass", bh.resetPass(reset_pass))
+	bh.mux.Post("/reset_pass", bh.resetPassPost(reset_pass))
 
-	bh.mux.Get("/confirm_reset_pass", bh.confirmResetPass())
-	bh.mux.Post("/confirm_reset_pass", bh.confirmResetPassPost())
+	bh.mux.Get("/confirm_reset_pass", bh.confirmResetPass(confirm_reset_pass))
+	bh.mux.Post("/confirm_reset_pass", bh.confirmResetPassPost(confirm_reset_pass))
 
 	bh.mux.Mount("/", bh.root())
 	bh.mux.Get("/logout", bh.logout())
 	return bh.mux
 }
 
+func (bh *BaseHandler) sendToTemplate(err error, text string, temp string, w http.ResponseWriter) {
+	var msg Msg
+	if err != nil {
+		msg.HaveErr = true
+		msg.ErrorMsg = err.Error()
+	}
+	msg.Msg = text
+
+	tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, temp)))
+	tmpl.Execute(w, msg)
+}
+
 func (bh *BaseHandler) root() http.Handler {
 	r := chi.NewRouter()
 	r.Use(authHandle(bh.secretKey))
-	r.Get("/", bh.index())
+	r.Get("/", bh.index(index))
 
 	return r
 }
 
-func (bh *BaseHandler) index() http.HandlerFunc {
+func (bh *BaseHandler) index(temp string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		userIDString, err := getUserID(req)
 		if err != nil {
-			msg := Msg{"", true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "index.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, "", temp, w)
 			return
 		}
 
 		userID, err := strconv.Atoi(userIDString)
 		if err != nil {
-			msg := Msg{"", true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "index.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, "", temp, w)
 			return
 		}
 
@@ -134,9 +151,7 @@ func (bh *BaseHandler) index() http.HandlerFunc {
 			text = "Welcome, " + user.Email + "! Your role: admin. Your know flag: sbmt_ctf_appsec_admin_always_knows_all_flags"
 		}
 
-		msg := Msg{text, false, ""}
-		tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "index.html")))
-		tmpl.Execute(w, msg)
+		bh.sendToTemplate(nil, text, temp, w)
 	}
 }
 
@@ -154,21 +169,17 @@ func (bh *BaseHandler) logout() http.HandlerFunc {
 	}
 }
 
-func (bh *BaseHandler) signin() http.HandlerFunc {
+func (bh *BaseHandler) signin(temp string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		msg := Msg{"", false, ""}
-		tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "signin.html")))
-		tmpl.Execute(w, msg)
+		bh.sendToTemplate(nil, "", temp, w)
 	}
 }
 
-func (bh *BaseHandler) signinPost() http.HandlerFunc {
+func (bh *BaseHandler) signinPost(temp string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		err := req.ParseForm()
 		if err != nil {
-			msg := Msg{"", true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "signin.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, "", temp, w)
 			log.Println(err)
 			return
 		}
@@ -177,63 +188,49 @@ func (bh *BaseHandler) signinPost() http.HandlerFunc {
 
 		_, err = mail.ParseAddress(formEmail)
 		if err != nil {
-			msg := Msg{"", true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "signin.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, "", temp, w)
 			log.Println(err)
 			return
 		}
 
 		domain := strings.Split(formEmail, "@")
 		if domain[1] != "sbermarket.ru" {
-			msg := Msg{"", true, ErrWrongDomain.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "signin.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(ErrWrongDomain, "", temp, w)
 			log.Println(ErrWrongDomain)
 			return
 		}
 
 		err = bh.passwordValidator.Validate(formPassword)
 		if err != nil {
-			msg := Msg{"", true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "signin.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, "", temp, w)
 			log.Println(err)
 			return
 		}
 
 		email, err := bh.userRepo.CreateUser(formEmail, formPassword)
 		if err != nil {
-			msg := Msg{"", true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "signin.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, "", temp, w)
 			log.Println(err)
 			return
 		}
 
-		msg := Msg{"We send confirmation to: " + email + ", please check email", false, ""}
-		tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "inform.html")))
-		tmpl.Execute(w, msg)
+		bh.sendToTemplate(nil, "We send confirmation to: "+email+". Please check email", "inform.html", w)
 	}
 }
 
-func (bh *BaseHandler) confirmSignin() http.HandlerFunc {
+func (bh *BaseHandler) confirmSignin(temp string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		confirmation := req.URL.Query().Get("confirmation")
 		data, err := base64.StdEncoding.DecodeString(confirmation)
 		if err != nil {
-			msg := Msg{MsgConfirmationIncorrect, true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "confirm_signin.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, MsgConfirmationIncorrect, temp, w)
 			log.Println(err)
 			return
 		}
 
 		params := strings.Split(string(data), "&")
 		if len(params) != 2 {
-			msg := Msg{MsgConfirmationIncorrect, true, ErrConfirmationIncorrect.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "confirm_signin.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(ErrConfirmationIncorrect, MsgConfirmationIncorrect, temp, w)
 			log.Println(ErrConfirmationIncorrect)
 			return
 		}
@@ -241,51 +238,40 @@ func (bh *BaseHandler) confirmSignin() http.HandlerFunc {
 		emailParams := strings.Split(params[0], "=")
 		codeParams := strings.Split(params[1], "=")
 		if len(emailParams) != 2 || len(codeParams) != 2 {
-			msg := Msg{MsgConfirmationIncorrect, true, ErrConfirmationIncorrect.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "confirm_signin.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(ErrConfirmationIncorrect, MsgConfirmationIncorrect, temp, w)
 			log.Println(ErrConfirmationIncorrect)
 			return
 		}
 
 		err = bh.userRepo.ConfirmUser(emailParams[1], codeParams[1])
 		if err != nil {
-			msg := Msg{MsgConfirmationIncorrect, true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "confirm_signin.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, MsgConfirmationIncorrect, temp, w)
 			log.Println(err)
 			return
 		}
 
-		msg := Msg{"Email confirmed! Now Login please", false, ""}
-		tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "inform.html")))
-		tmpl.Execute(w, msg)
+		bh.sendToTemplate(nil, "Email confirmed! Now please Login", "inform.html", w)
 	}
 }
 
-func (bh *BaseHandler) login() http.HandlerFunc {
+func (bh *BaseHandler) login(temp string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		msg := Msg{"", false, ""}
-		tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "login.html")))
-		tmpl.Execute(w, msg)
+		bh.sendToTemplate(nil, "", temp, w)
 	}
 }
 
-func (bh *BaseHandler) loginPost() http.HandlerFunc {
+func (bh *BaseHandler) loginPost(temp string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		if err := req.ParseForm(); err != nil {
-			msg := Msg{"", true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "login.html")))
-			tmpl.Execute(w, msg)
+		err := req.ParseForm()
+		if err != nil {
+			bh.sendToTemplate(err, "", temp, w)
 			log.Println(err)
 			return
 		}
 
 		user, err := bh.userRepo.AuthUser(req.PostForm["email"][0], req.PostForm["password"][0])
 		if err != nil {
-			msg := Msg{"", true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "login.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, "", temp, w)
 			log.Println(err)
 			return
 		}
@@ -307,27 +293,21 @@ func (bh *BaseHandler) loginPost() http.HandlerFunc {
 		}
 		http.SetCookie(w, cookie)
 
-		msg := Msg{text, false, ""}
-		tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "index.html")))
-		tmpl.Execute(w, msg)
+		bh.sendToTemplate(nil, text, "index.html", w)
 	}
 }
 
-func (bh *BaseHandler) resetPass() http.HandlerFunc {
+func (bh *BaseHandler) resetPass(temp string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		msg := Msg{"", false, ""}
-		tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "reset_pass.html")))
-		tmpl.Execute(w, msg)
+		bh.sendToTemplate(nil, "", temp, w)
 	}
 }
 
-func (bh *BaseHandler) resetPassPost() http.HandlerFunc {
+func (bh *BaseHandler) resetPassPost(temp string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		err := req.ParseForm()
 		if err != nil {
-			msg := Msg{"", true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "reset_pass.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, "", temp, w)
 			log.Println(err)
 			return
 		}
@@ -335,53 +315,41 @@ func (bh *BaseHandler) resetPassPost() http.HandlerFunc {
 		formEmail := req.PostForm["email"][0]
 		_, err = mail.ParseAddress(formEmail)
 		if err != nil {
-			msg := Msg{"", true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "reset_pass.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, "", temp, w)
 			log.Println(err)
 			return
 		}
 
 		domain := strings.Split(formEmail, "@")
 		if domain[1] != "sbermarket.ru" {
-			msg := Msg{"", true, ErrWrongDomain.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "reset_pass.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(ErrWrongDomain, "", temp, w)
 			log.Println(ErrWrongDomain)
 			return
 		}
 
 		email, err := bh.userRepo.Reset(formEmail)
 		if err != nil {
-			msg := Msg{"", true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "reset_pass.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, "", temp, w)
 			log.Println(err)
 			return
 		}
 
-		msg := Msg{"We send confirmation to: " + email + ", please check email", false, ""}
-		tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "inform.html")))
-		tmpl.Execute(w, msg)
+		bh.sendToTemplate(nil, "We send confirmation to: "+email+", please check email", "inform.html", w)
 	}
 }
 
-func (bh *BaseHandler) confirmResetPass() http.HandlerFunc {
+func (bh *BaseHandler) confirmResetPass(temp string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		msg := Msg{"", false, ""}
-		tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "confirm_reset_pass.html")))
-		tmpl.Execute(w, msg)
+		bh.sendToTemplate(nil, "", temp, w)
 	}
 }
 
-func (bh *BaseHandler) confirmResetPassPost() http.HandlerFunc {
+func (bh *BaseHandler) confirmResetPassPost(temp string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		referer := req.Referer()
 		url, err := url.ParseRequestURI(referer)
 		if err != nil {
-			msg := Msg{MsgConfirmationIncorrect, true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "confirm_reset_pass.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, MsgConfirmationIncorrect, temp, w)
 			log.Println(err)
 			return
 		}
@@ -389,18 +357,14 @@ func (bh *BaseHandler) confirmResetPassPost() http.HandlerFunc {
 		confirmation := url.Query().Get("confirmation")
 		data, err := base64.StdEncoding.DecodeString(confirmation)
 		if err != nil {
-			msg := Msg{MsgConfirmationIncorrect, true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "confirm_reset_pass.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, MsgConfirmationIncorrect, temp, w)
 			log.Println(err)
 			return
 		}
 
 		params := strings.Split(string(data), "&")
 		if len(params) != 2 {
-			msg := Msg{MsgConfirmationIncorrect, true, ErrConfirmationIncorrect.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "confirm_reset_pass.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(ErrConfirmationIncorrect, MsgConfirmationIncorrect, temp, w)
 			log.Println(ErrConfirmationIncorrect)
 			return
 		}
@@ -408,18 +372,14 @@ func (bh *BaseHandler) confirmResetPassPost() http.HandlerFunc {
 		emailParams := strings.Split(params[0], "=")
 		codeParams := strings.Split(params[1], "=")
 		if len(emailParams) != 2 || len(codeParams) != 2 {
-			msg := Msg{MsgConfirmationIncorrect, true, ErrConfirmationIncorrect.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "confirm_reset_pass.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(ErrConfirmationIncorrect, MsgConfirmationIncorrect, temp, w)
 			log.Println(ErrConfirmationIncorrect)
 			return
 		}
 
 		err = req.ParseForm()
 		if err != nil {
-			msg := Msg{"", true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "confirm_reset_pass.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, "", temp, w)
 			log.Println(err)
 			return
 		}
@@ -427,25 +387,19 @@ func (bh *BaseHandler) confirmResetPassPost() http.HandlerFunc {
 		formPassword := req.PostForm["password"][0]
 		err = bh.passwordValidator.Validate(formPassword)
 		if err != nil {
-			msg := Msg{"", true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "confirm_reset_pass.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, "", temp, w)
 			log.Println(err)
 			return
 		}
 
 		err = bh.userRepo.UpdatePassword(emailParams[1], formPassword, codeParams[1])
 		if err != nil {
-			msg := Msg{MsgConfirmationIncorrect, true, err.Error()}
-			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "confirm_reset_pass.html")))
-			tmpl.Execute(w, msg)
+			bh.sendToTemplate(err, MsgConfirmationIncorrect, temp, w)
 			log.Println(err)
 			return
 		}
 
-		msg := Msg{"Password updated! Now Login please", false, ""}
-		tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "inform.html")))
-		tmpl.Execute(w, msg)
+		bh.sendToTemplate(nil, "Password updated! Now Login please", "inform.html", w)
 
 	}
 }
