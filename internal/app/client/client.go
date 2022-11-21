@@ -76,8 +76,8 @@ func (c *SMTPClient) SendMail(mail Mail) error {
 	subject := "Subject: " + mail.Subject + "\r\n"
 	mime := "MIME-Version: 1.0\n" + "Content-Type: text/html; charset=\"UTF-8\"\r\n\r\n"
 
-	tmpl := template.Must(template.ParseFiles(filepath.Join(c.staticDir, "mail.html")))
 	buf := new(bytes.Buffer)
+	tmpl := template.Must(template.ParseFiles(filepath.Join(c.staticDir, "mail.html")))
 	tmpl.Execute(buf, mail)
 	body := buf.String()
 
