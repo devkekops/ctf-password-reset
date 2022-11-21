@@ -2,7 +2,7 @@ package client
 
 import (
 	"errors"
-	"fmt"
+	"log"
 	"net/smtp"
 	"time"
 )
@@ -67,7 +67,7 @@ func (c *SMTPClient) SendMail(to string, subj string, msg string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Email Sent Successfully!")
+	log.Printf("Email to %s with subject %s sent successfully!\n", to, subj)
 
 	return nil
 }

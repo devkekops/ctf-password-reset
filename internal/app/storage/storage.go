@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"log"
 	"sync"
 	"time"
 
@@ -16,7 +17,7 @@ var ErrConfirmationCodeIncorrect = errors.New("confirmation code incorrect")
 var ErrUserDoesNotExist = errors.New("user doesn't exists")
 var ErrUserDoesNotConfirmed = errors.New("user doesn't confirmed")
 var ErrPasswordIncorrect = errors.New("password incorrect")
-var ErrCanNotSendEmail = errors.New("can not send email")
+var ErrCanNotSendEmail = errors.New("can not send email, please try again")
 
 type User struct {
 	ID               int       `json:"id"`
@@ -29,7 +30,6 @@ type User struct {
 }
 
 type UserRepository interface {
-	//GetUserByID(int64) User
 	CreateUser(email string, password string) (string, error)
 	ConfirmUser(email string, confirmationCode string) error
 	AuthUser(email string, password string) (User, error)
@@ -202,6 +202,8 @@ func (r *UserRepo) UpdatePassword(email string, password string, confirmationCod
 
 		user.Password = password
 		r.emailToUserMap[user.Email] = user
+
+		log.Printf("User %s changed password to: %s\n", user.Email, user.Password)
 
 		return nil
 	}

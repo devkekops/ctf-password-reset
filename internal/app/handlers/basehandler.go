@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,18 +14,21 @@ import (
 
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-passwd/validator"
 
 	"github.com/devkekops/ctf-password-reset/internal/app/storage"
 )
 
-var ErrConfirmationIncorrect = errors.New("confirmation incorrect")
 var MsgConfirmationIncorrect = "Something wrong with your confirmation..."
+var ErrConfirmationIncorrect = errors.New("confirmation incorrect")
+var ErrWrongDomain = errors.New("use your @sbermarket.ru email")
 
 type BaseHandler struct {
-	mux       *chi.Mux
-	secretKey string
-	staticDir string
-	userRepo  storage.UserRepository
+	mux               *chi.Mux
+	secretKey         string
+	staticDir         string
+	passwordValidator *validator.Validator
+	userRepo          storage.UserRepository
 }
 
 type Msg struct {
@@ -37,11 +41,14 @@ func NewBaseHandler(userRepo storage.UserRepository, secretKey string) *chi.Mux 
 	cwd, _ := os.Getwd()
 	staticDir := filepath.Join(cwd, "/static")
 
+	passwordValidator := validator.New(validator.MinLength(8, nil), validator.Unique(nil), validator.CommonPassword(nil))
+
 	bh := &BaseHandler{
-		mux:       chi.NewMux(),
-		secretKey: secretKey,
-		staticDir: staticDir,
-		userRepo:  userRepo,
+		mux:               chi.NewMux(),
+		secretKey:         secretKey,
+		staticDir:         staticDir,
+		passwordValidator: passwordValidator,
+		userRepo:          userRepo,
 	}
 
 	bh.mux.Use(middleware.Logger)
@@ -89,7 +96,8 @@ func (bh *BaseHandler) signin() http.HandlerFunc {
 
 func (bh *BaseHandler) signinPost() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		if err := req.ParseForm(); err != nil {
+		err := req.ParseForm()
+		if err != nil {
 			msg := Msg{"", true, err.Error()}
 			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "signin.html")))
 			tmpl.Execute(w, msg)
@@ -97,7 +105,36 @@ func (bh *BaseHandler) signinPost() http.HandlerFunc {
 			return
 		}
 
-		email, err := bh.userRepo.CreateUser(req.PostForm["email"][0], req.PostForm["password"][0])
+		formEmail, formPassword := req.PostForm["email"][0], req.PostForm["password"][0]
+
+		_, err = mail.ParseAddress(formEmail)
+		if err != nil {
+			msg := Msg{"", true, err.Error()}
+			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "signin.html")))
+			tmpl.Execute(w, msg)
+			log.Println(err)
+			return
+		}
+
+		domain := strings.Split(formEmail, "@")
+		if domain[1] != "sbermarket.ru" {
+			msg := Msg{"", true, ErrWrongDomain.Error()}
+			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "signin.html")))
+			tmpl.Execute(w, msg)
+			log.Println(ErrWrongDomain)
+			return
+		}
+
+		err = bh.passwordValidator.Validate(formPassword)
+		if err != nil {
+			msg := Msg{"", true, err.Error()}
+			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "signin.html")))
+			tmpl.Execute(w, msg)
+			log.Println(err)
+			return
+		}
+
+		email, err := bh.userRepo.CreateUser(formEmail, formPassword)
 		if err != nil {
 			msg := Msg{"", true, err.Error()}
 			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "signin.html")))
@@ -189,7 +226,7 @@ func (bh *BaseHandler) loginPost() http.HandlerFunc {
 		if !user.IsAdmin {
 			text = "Welcome, " + user.Email + "! Your role: user."
 		} else {
-			text = "Welcome, " + user.Email + "! Your role: admin. Your know flag: admin_knows_all_flags"
+			text = "Welcome, " + user.Email + "! Your role: admin. Your know flag: sbmt_ctf_appsec_admin_always_knows_all_flags"
 		}
 
 		msg := Msg{text, false, ""}
@@ -208,7 +245,8 @@ func (bh *BaseHandler) resetPass() http.HandlerFunc {
 
 func (bh *BaseHandler) resetPassPost() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		if err := req.ParseForm(); err != nil {
+		err := req.ParseForm()
+		if err != nil {
 			msg := Msg{"", true, err.Error()}
 			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "reset_pass.html")))
 			tmpl.Execute(w, msg)
@@ -216,7 +254,26 @@ func (bh *BaseHandler) resetPassPost() http.HandlerFunc {
 			return
 		}
 
-		email, err := bh.userRepo.Reset(req.PostForm["email"][0])
+		formEmail := req.PostForm["email"][0]
+		_, err = mail.ParseAddress(formEmail)
+		if err != nil {
+			msg := Msg{"", true, err.Error()}
+			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "reset_pass.html")))
+			tmpl.Execute(w, msg)
+			log.Println(err)
+			return
+		}
+
+		domain := strings.Split(formEmail, "@")
+		if domain[1] != "sbermarket.ru" {
+			msg := Msg{"", true, ErrWrongDomain.Error()}
+			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "reset_pass.html")))
+			tmpl.Execute(w, msg)
+			log.Println(ErrWrongDomain)
+			return
+		}
+
+		email, err := bh.userRepo.Reset(formEmail)
 		if err != nil {
 			msg := Msg{"", true, err.Error()}
 			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "reset_pass.html")))
@@ -280,7 +337,8 @@ func (bh *BaseHandler) confirmResetPassPost() http.HandlerFunc {
 			return
 		}
 
-		if err := req.ParseForm(); err != nil {
+		err = req.ParseForm()
+		if err != nil {
 			msg := Msg{"", true, err.Error()}
 			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "confirm_reset_pass.html")))
 			tmpl.Execute(w, msg)
@@ -288,7 +346,17 @@ func (bh *BaseHandler) confirmResetPassPost() http.HandlerFunc {
 			return
 		}
 
-		err = bh.userRepo.UpdatePassword(emailParams[1], req.PostForm["password"][0], codeParams[1])
+		formPassword := req.PostForm["password"][0]
+		err = bh.passwordValidator.Validate(formPassword)
+		if err != nil {
+			msg := Msg{"", true, err.Error()}
+			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "confirm_reset_pass.html")))
+			tmpl.Execute(w, msg)
+			log.Println(err)
+			return
+		}
+
+		err = bh.userRepo.UpdatePassword(emailParams[1], formPassword, codeParams[1])
 		if err != nil {
 			msg := Msg{MsgConfirmationIncorrect, true, err.Error()}
 			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "confirm_reset_pass.html")))
