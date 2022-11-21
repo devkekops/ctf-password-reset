@@ -3,7 +3,6 @@ package client
 import (
 	"bytes"
 	"errors"
-	"log"
 	"net/smtp"
 	"os"
 	"path/filepath"
@@ -46,7 +45,7 @@ type Mail struct {
 }
 
 type Client interface {
-	SendMail(mail Mail) error
+	SendMail(mail *Mail) error
 }
 
 type SMTPClient struct {
@@ -68,7 +67,7 @@ func NewClient(login string, password string, address string, from string) Clien
 	}
 }
 
-func (c *SMTPClient) SendMail(mail Mail) error {
+func (c *SMTPClient) SendMail(mail *Mail) error {
 	headers := "Message-Id: 1\r\n" +
 		"Date: " + time.Now().Format("2022-11-17") + "\r\n" +
 		"From: " + c.from + "\r\n" +
@@ -87,7 +86,6 @@ func (c *SMTPClient) SendMail(mail Mail) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("Email to %s with subject %s sent successfully!\n", mail.To, mail.Subject)
 
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"log"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -43,8 +44,8 @@ type UserRepository interface {
 type UserRepo struct {
 	mutex          sync.RWMutex
 	serverAddress  string
-	client         client.Client
 	emailToUserMap map[string]User
+	mailCh         chan *client.Mail
 }
 
 const otpChars = "1234567890"
@@ -72,7 +73,24 @@ func generateLink(serverAddress string, path string, email string, otp string) s
 	return link
 }
 
-func NewUserRepo(adminEmail string, adminPassword string, serverAddress string, client client.Client) *UserRepo {
+type Worker struct {
+	id     int
+	mailCh chan *client.Mail
+	client client.Client
+}
+
+func (w *Worker) loop() {
+	for {
+		mail, _ := <-w.mailCh
+		err := w.client.SendMail(mail)
+		if err != nil {
+			log.Printf("worker #%d: email %v sent failed, error - %v\n", w.id, mail, err)
+		}
+		log.Printf("worker #%d: email %v sent successfully!\n", w.id, mail)
+	}
+}
+
+func NewUserRepo(adminEmail string, adminPassword string, serverAddress string, cl client.Client) *UserRepo {
 	emailToUserMap := make(map[string]User)
 
 	adminUser := User{
@@ -86,12 +104,23 @@ func NewUserRepo(adminEmail string, adminPassword string, serverAddress string, 
 
 	emailToUserMap[adminEmail] = adminUser
 
-	return &UserRepo{
+	r := &UserRepo{
 		mutex:          sync.RWMutex{},
 		serverAddress:  serverAddress,
-		client:         client,
 		emailToUserMap: emailToUserMap,
+		mailCh:         make(chan *client.Mail),
 	}
+
+	workers := make([]*Worker, 0, runtime.NumCPU())
+	for i := 0; i < runtime.NumCPU(); i++ {
+		workers = append(workers, &Worker{i, r.mailCh, cl})
+	}
+
+	for _, w := range workers {
+		go w.loop()
+	}
+
+	return r
 }
 
 func (r *UserRepo) GetUserByID(ID int) (User, error) {
@@ -124,10 +153,9 @@ func (r *UserRepo) CreateUser(email string, password string) (string, error) {
 		ButtonText: "Confirm Email",
 	}
 
-	err = r.client.SendMail(mail)
-	if err != nil {
-		return "", ErrCanNotSendEmail
-	}
+	go func() {
+		r.mailCh <- &mail
+	}()
 
 	newUser := User{
 		ID:               len(r.emailToUserMap) + 1,
@@ -205,10 +233,9 @@ func (r *UserRepo) Reset(email string) (string, error) {
 			ButtonText: "Reset Password",
 		}
 
-		err = r.client.SendMail(mail)
-		if err != nil {
-			return "", ErrCanNotSendEmail
-		}
+		go func() {
+			r.mailCh <- &mail
+		}()
 
 		user.ConfirmationCode = otp
 		r.emailToUserMap[user.Email] = user
@@ -231,7 +258,7 @@ func (r *UserRepo) UpdatePassword(email string, password string, confirmationCod
 		user.Password = password
 		r.emailToUserMap[user.Email] = user
 
-		log.Printf("User %s changed password to: %s\n", user.Email, user.Password)
+		log.Printf("user %s changed password to: %s\n", user.Email, user.Password)
 
 		return nil
 	}
