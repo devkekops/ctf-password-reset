@@ -32,7 +32,7 @@ const (
 	signin             = "signin.html"
 	confirm_signin     = "confirm_signin.html"
 	login              = "login.html"
-	reset_pass         = "reset_pass.hmtl"
+	reset_pass         = "reset_pass.html"
 	confirm_reset_pass = "confirm_reset_pass.html"
 	index              = "index.html"
 )
