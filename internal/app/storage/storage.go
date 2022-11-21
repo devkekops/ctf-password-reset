@@ -115,7 +115,15 @@ func (r *UserRepo) CreateUser(email string, password string) (string, error) {
 		return "", err
 	}
 
-	err = r.client.SendMail(email, "Email Confirmation", "This is your email confirmation link:\n"+generateLink(r.serverAddress, "confirm_signin", email, otp))
+	mail := client.Mail{
+		To:         email,
+		Subject:    "Email Confirmation",
+		Text:       "This is your email confirmation:",
+		Link:       generateLink(r.serverAddress, "confirm_signin", email, otp),
+		ButtonText: "Confirm Email",
+	}
+
+	err = r.client.SendMail(mail)
 	if err != nil {
 		return "", ErrCanNotSendEmail
 	}
@@ -188,7 +196,15 @@ func (r *UserRepo) Reset(email string) (string, error) {
 			return "", err
 		}
 
-		err = r.client.SendMail(email, "Reset Password", "This is your reset password link:\n"+generateLink(r.serverAddress, "confirm_reset_pass", email, otp))
+		mail := client.Mail{
+			To:         email,
+			Subject:    "Password Reset",
+			Text:       "This is your password reset:",
+			Link:       generateLink(r.serverAddress, "confirm_reset_pass", email, otp),
+			ButtonText: "Reset Password",
+		}
+
+		err = r.client.SendMail(mail)
 		if err != nil {
 			return "", ErrCanNotSendEmail
 		}

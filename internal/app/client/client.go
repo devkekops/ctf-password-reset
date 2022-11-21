@@ -33,41 +33,60 @@ func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
 	return nil, nil
 }
 
+type Mail struct {
+	To         string
+	Subject    string
+	Text       string
+	Link       string
+	ButtonText string
+}
+
 type Client interface {
-	SendMail(to string, subj string, msg string) error
+	SendMail(mail Mail) error
 }
 
 type SMTPClient struct {
 	loginAuth smtp.Auth
 	address   string
 	from      string
+	//staticDir string
 }
 
 func NewClient(login string, password string, address string, from string) Client {
+	//cwd, _ := os.Getwd()
+	//staticDir := filepath.Join(cwd, "/static")
+
 	return &SMTPClient{
 		loginAuth: LoginAuth(login, password),
 		address:   address,
 		from:      from,
+		//staticDir: staticDir,
 	}
 }
 
-func (c *SMTPClient) SendMail(to string, subj string, msg string) error {
+func (c *SMTPClient) SendMail(mail Mail) error {
+	/*
+		tmpl := template.Must(template.ParseFiles(filepath.Join(c.staticDir, "mail.html")))
+		buf := new(bytes.Buffer)
+		tmpl.Execute(buf, link)
+		body := buf.String()*/
 
-	mail := []byte("Message-Id: 1\r\n" +
+	headers := "Message-Id: 1\r\n" +
 		"Date: " + time.Now().Format("2022-11-17") + "\r\n" +
 		"From: " + c.from + "\r\n" +
-		"To: " + to + "\r\n" +
-		"Subject: " + subj + "\r\n" +
-		"MIME-Version: 1.0\r\n" +
-		"Content-Type: text/html; charset=\"UTF-8\"\r\n" +
-		"\r\n" +
-		msg + "\r\n")
+		"To: " + mail.To + "\r\n"
+	subject := "Subject: " + mail.Subject + "\r\n"
+	mime := "MIME-Version: 1.0\n" + "Content-Type: text/html; charset=\"UTF-8\"\r\n\r\n"
 
-	err := smtp.SendMail(c.address, c.loginAuth, c.from, []string{to}, mail)
+	body := mail.Text + "<br>" + mail.Link + "\r\n"
+
+	msg := []byte(headers + subject + mime + body)
+
+	err := smtp.SendMail(c.address, c.loginAuth, c.from, []string{mail.To}, msg)
 	if err != nil {
 		return err
 	}
-	log.Printf("Email to %s with subject %s sent successfully!\n", to, subj)
+	log.Printf("Email to %s with subject %s sent successfully!\n", mail.To, mail.Subject)
 
 	return nil
 }
