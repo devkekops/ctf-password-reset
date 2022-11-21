@@ -15,6 +15,7 @@ type key string
 const (
 	cookieName          = "session"
 	cookiePath          = "/"
+	cookieMaxAge        = 60 * 60 * 24
 	userIDKey       key = "userID"
 	signatureLength     = 32
 	invalidCookie       = "Invalid cookie"

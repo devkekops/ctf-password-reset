@@ -15,6 +15,7 @@ var ErrUserAlreadyExists = errors.New("user already exists")
 var ErrUserAlreadyConfirmed = errors.New("user already confirmed")
 var ErrConfirmationCodeIncorrect = errors.New("confirmation code incorrect")
 var ErrUserDoesNotExist = errors.New("user doesn't exists")
+var ErrUserWithGivenIDDoesNotExist = errors.New("user with given ID doesn't exists")
 var ErrUserDoesNotConfirmed = errors.New("user doesn't confirmed")
 var ErrPasswordIncorrect = errors.New("password incorrect")
 var ErrCanNotSendEmail = errors.New("can not send email, please try again")
@@ -30,6 +31,7 @@ type User struct {
 }
 
 type UserRepository interface {
+	GetUserByID(ID int) (User, error)
 	CreateUser(email string, password string) (string, error)
 	ConfirmUser(email string, confirmationCode string) error
 	AuthUser(email string, password string) (User, error)
@@ -42,28 +44,6 @@ type UserRepo struct {
 	serverAddress  string
 	client         client.Client
 	emailToUserMap map[string]User
-}
-
-func NewUserRepo(adminEmail string, adminPassword string, serverAddress string, client client.Client) *UserRepo {
-	emailToUserMap := make(map[string]User)
-
-	adminUser := User{
-		ID:               0,
-		RegistrationDate: time.Now(),
-		Confirmed:        true,
-		Email:            adminEmail,
-		Password:         adminPassword,
-		IsAdmin:          true,
-	}
-
-	emailToUserMap[adminEmail] = adminUser
-
-	return &UserRepo{
-		mutex:          sync.RWMutex{},
-		serverAddress:  serverAddress,
-		client:         client,
-		emailToUserMap: emailToUserMap,
-	}
 }
 
 const otpChars = "1234567890"
@@ -91,6 +71,37 @@ func generateLink(serverAddress string, path string, email string, otp string) s
 	return link
 }
 
+func NewUserRepo(adminEmail string, adminPassword string, serverAddress string, client client.Client) *UserRepo {
+	emailToUserMap := make(map[string]User)
+
+	adminUser := User{
+		ID:               1,
+		RegistrationDate: time.Now(),
+		Confirmed:        true,
+		Email:            adminEmail,
+		Password:         adminPassword,
+		IsAdmin:          true,
+	}
+
+	emailToUserMap[adminEmail] = adminUser
+
+	return &UserRepo{
+		mutex:          sync.RWMutex{},
+		serverAddress:  serverAddress,
+		client:         client,
+		emailToUserMap: emailToUserMap,
+	}
+}
+
+func (r *UserRepo) GetUserByID(ID int) (User, error) {
+	for _, user := range r.emailToUserMap {
+		if user.ID == ID {
+			return user, nil
+		}
+	}
+	return User{}, ErrUserWithGivenIDDoesNotExist
+}
+
 func (r *UserRepo) CreateUser(email string, password string) (string, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -110,7 +121,7 @@ func (r *UserRepo) CreateUser(email string, password string) (string, error) {
 	}
 
 	newUser := User{
-		ID:               len(r.emailToUserMap),
+		ID:               len(r.emailToUserMap) + 1,
 		RegistrationDate: time.Now(),
 		Confirmed:        false,
 		Email:            email,

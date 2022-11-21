@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"html/template"
 	"log"
@@ -10,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/middleware"
@@ -22,6 +26,7 @@ import (
 var MsgConfirmationIncorrect = "Something wrong with your confirmation..."
 var ErrConfirmationIncorrect = errors.New("confirmation incorrect")
 var ErrWrongDomain = errors.New("use your @sbermarket.ru email")
+var ErrInvalidUserIDInContext = errors.New("invalid userID in context")
 
 type BaseHandler struct {
 	mux               *chi.Mux
@@ -35,6 +40,29 @@ type Msg struct {
 	Msg      string
 	HaveErr  bool
 	ErrorMsg string
+}
+
+func createSession(userID string, secretKey string) string {
+	userIDBytes := []byte(userID)
+
+	key := sha256.Sum256([]byte(secretKey))
+	h := hmac.New(sha256.New, key[:])
+	h.Write(userIDBytes)
+	dst := h.Sum(nil)
+
+	sessionBytes := append(userIDBytes[:], dst[:]...)
+	session := hex.EncodeToString(sessionBytes)
+
+	return session
+}
+
+func getUserID(req *http.Request) (string, error) {
+	userIDctx := req.Context().Value(userIDKey)
+	userID, ok := userIDctx.(string)
+	if !ok {
+		return "", ErrInvalidUserIDInContext
+	}
+	return userID, nil
 }
 
 func NewBaseHandler(userRepo storage.UserRepository, secretKey string) *chi.Mux {
@@ -67,6 +95,7 @@ func NewBaseHandler(userRepo storage.UserRepository, secretKey string) *chi.Mux 
 	bh.mux.Post("/confirm_reset_pass", bh.confirmResetPassPost())
 
 	bh.mux.Mount("/", bh.root())
+	bh.mux.Get("/logout", bh.logout())
 	return bh.mux
 }
 
@@ -80,9 +109,48 @@ func (bh *BaseHandler) root() http.Handler {
 
 func (bh *BaseHandler) index() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		msg := Msg{"", false, ""}
+		userIDString, err := getUserID(req)
+		if err != nil {
+			msg := Msg{"", true, err.Error()}
+			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "index.html")))
+			tmpl.Execute(w, msg)
+			return
+		}
+
+		userID, err := strconv.Atoi(userIDString)
+		if err != nil {
+			msg := Msg{"", true, err.Error()}
+			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "index.html")))
+			tmpl.Execute(w, msg)
+			return
+		}
+
+		user, err := bh.userRepo.GetUserByID(userID)
+
+		text := ""
+		if !user.IsAdmin {
+			text = "Welcome, " + user.Email + "! Your role: user."
+		} else {
+			text = "Welcome, " + user.Email + "! Your role: admin. Your know flag: sbmt_ctf_appsec_admin_always_knows_all_flags"
+		}
+
+		msg := Msg{text, false, ""}
 		tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "index.html")))
 		tmpl.Execute(w, msg)
+	}
+}
+
+func (bh *BaseHandler) logout() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		cookie := &http.Cookie{
+			Name:     cookieName,
+			Value:    "",
+			Path:     cookiePath,
+			MaxAge:   0,
+			HttpOnly: true,
+		}
+		http.SetCookie(w, cookie)
+		http.Redirect(w, req, "/login", 302)
 	}
 }
 
@@ -228,6 +296,16 @@ func (bh *BaseHandler) loginPost() http.HandlerFunc {
 		} else {
 			text = "Welcome, " + user.Email + "! Your role: admin. Your know flag: sbmt_ctf_appsec_admin_always_knows_all_flags"
 		}
+
+		session := createSession(strconv.Itoa(user.ID), bh.secretKey)
+		cookie := &http.Cookie{
+			Name:     cookieName,
+			Value:    session,
+			Path:     cookiePath,
+			MaxAge:   cookieMaxAge,
+			HttpOnly: true,
+		}
+		http.SetCookie(w, cookie)
 
 		msg := Msg{text, false, ""}
 		tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, "index.html")))
