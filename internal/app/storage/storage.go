@@ -118,7 +118,7 @@ func (r *UserRepo) CreateUser(email string, password string) (string, error) {
 	mail := client.Mail{
 		To:         email,
 		Subject:    "Email Confirmation",
-		Text:       "This is your email confirmation:",
+		Text:       "Tap the button below to confirm your email address. If you didn't create an account, you can safely delete this email.",
 		Link:       generateLink(r.serverAddress, "confirm_signin", email, otp),
 		ButtonText: "Confirm Email",
 	}
@@ -199,7 +199,7 @@ func (r *UserRepo) Reset(email string) (string, error) {
 		mail := client.Mail{
 			To:         email,
 			Subject:    "Password Reset",
-			Text:       "This is your password reset:",
+			Text:       "Tap the button below to reset your password. If you didn't reset password, you can safely delete this email.",
 			Link:       generateLink(r.serverAddress, "confirm_reset_pass", email, otp),
 			ButtonText: "Reset Password",
 		}

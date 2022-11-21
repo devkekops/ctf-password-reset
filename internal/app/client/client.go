@@ -1,9 +1,13 @@
 package client
 
 import (
+	"bytes"
 	"errors"
 	"log"
 	"net/smtp"
+	"os"
+	"path/filepath"
+	"text/template"
 	"time"
 )
 
@@ -49,28 +53,22 @@ type SMTPClient struct {
 	loginAuth smtp.Auth
 	address   string
 	from      string
-	//staticDir string
+	staticDir string
 }
 
 func NewClient(login string, password string, address string, from string) Client {
-	//cwd, _ := os.Getwd()
-	//staticDir := filepath.Join(cwd, "/static")
+	cwd, _ := os.Getwd()
+	staticDir := filepath.Join(cwd, "/static")
 
 	return &SMTPClient{
 		loginAuth: LoginAuth(login, password),
 		address:   address,
 		from:      from,
-		//staticDir: staticDir,
+		staticDir: staticDir,
 	}
 }
 
 func (c *SMTPClient) SendMail(mail Mail) error {
-	/*
-		tmpl := template.Must(template.ParseFiles(filepath.Join(c.staticDir, "mail.html")))
-		buf := new(bytes.Buffer)
-		tmpl.Execute(buf, link)
-		body := buf.String()*/
-
 	headers := "Message-Id: 1\r\n" +
 		"Date: " + time.Now().Format("2022-11-17") + "\r\n" +
 		"From: " + c.from + "\r\n" +
@@ -78,7 +76,10 @@ func (c *SMTPClient) SendMail(mail Mail) error {
 	subject := "Subject: " + mail.Subject + "\r\n"
 	mime := "MIME-Version: 1.0\n" + "Content-Type: text/html; charset=\"UTF-8\"\r\n\r\n"
 
-	body := mail.Text + "<br>" + mail.Link + "\r\n"
+	tmpl := template.Must(template.ParseFiles(filepath.Join(c.staticDir, "mail.html")))
+	buf := new(bytes.Buffer)
+	tmpl.Execute(buf, mail)
+	body := buf.String()
 
 	msg := []byte(headers + subject + mime + body)
 
