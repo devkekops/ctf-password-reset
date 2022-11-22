@@ -10,4 +10,5 @@ docker run -e SERVER_ADDRESS='0.0.0.0:80' \
     -e SMTP_LOGIN='...' \
     -e SMTP_PASSWORD='...' \
     -e FROM_EMAIL='...' \
+    -e FLAG='...' \
     -p 80:80 ctf-reset-password

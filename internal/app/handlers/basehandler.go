@@ -35,11 +35,14 @@ const (
 	reset_pass         = "reset_pass.html"
 	confirm_reset_pass = "confirm_reset_pass.html"
 	index              = "index.html"
+	admin              = "admin.html"
+	inform             = "inform.html"
 )
 
 type BaseHandler struct {
 	mux               *chi.Mux
 	secretKey         string
+	flag              string
 	staticDir         string
 	passwordValidator *validator.Validator
 	userRepo          storage.UserRepository
@@ -47,6 +50,13 @@ type BaseHandler struct {
 
 type Msg struct {
 	Msg      string
+	HaveErr  bool
+	ErrorMsg string
+}
+
+type AdminMsg struct {
+	Msg      string
+	Users    []storage.User
 	HaveErr  bool
 	ErrorMsg string
 }
@@ -74,7 +84,7 @@ func getUserID(req *http.Request) (string, error) {
 	return userID, nil
 }
 
-func NewBaseHandler(userRepo storage.UserRepository, secretKey string) *chi.Mux {
+func NewBaseHandler(userRepo storage.UserRepository, secretKey string, flag string) *chi.Mux {
 	cwd, _ := os.Getwd()
 	staticDir := filepath.Join(cwd, "/static")
 
@@ -83,6 +93,7 @@ func NewBaseHandler(userRepo storage.UserRepository, secretKey string) *chi.Mux 
 	bh := &BaseHandler{
 		mux:               chi.NewMux(),
 		secretKey:         secretKey,
+		flag:              flag,
 		staticDir:         staticDir,
 		passwordValidator: passwordValidator,
 		userRepo:          userRepo,
@@ -143,15 +154,24 @@ func (bh *BaseHandler) index(temp string) http.HandlerFunc {
 		}
 
 		user, err := bh.userRepo.GetUserByID(userID)
-
-		text := ""
-		if !user.IsAdmin {
-			text = "Welcome, " + user.Email + "! Your role: user."
-		} else {
-			text = "Welcome, " + user.Email + "! Your role: admin. Your know flag: sbmt_ctf_appsec_admin_always_knows_all_flags"
+		if err != nil {
+			http.Redirect(w, req, "/login", 302)
 		}
 
-		bh.sendToTemplate(nil, text, temp, w)
+		if !user.IsAdmin {
+			text := "Welcome, " + user.Email + "! Your role: user."
+			bh.sendToTemplate(nil, text, index, w)
+		} else {
+			users := bh.userRepo.GetAllUsers()
+			AdminMsg := AdminMsg{
+				Msg:      "Welcome, " + user.Email + "! Your role: admin. Your know flag: " + bh.flag,
+				Users:    users,
+				HaveErr:  false,
+				ErrorMsg: "",
+			}
+			tmpl := template.Must(template.ParseFiles(filepath.Join(bh.staticDir, admin)))
+			tmpl.Execute(w, AdminMsg)
+		}
 	}
 }
 
@@ -214,7 +234,7 @@ func (bh *BaseHandler) signinPost(temp string) http.HandlerFunc {
 			return
 		}
 
-		bh.sendToTemplate(nil, "We send confirmation to: "+email+". Please check email", "inform.html", w)
+		bh.sendToTemplate(nil, "We send confirmation to: "+email+". Please check email", inform, w)
 	}
 }
 
@@ -250,7 +270,7 @@ func (bh *BaseHandler) confirmSignin(temp string) http.HandlerFunc {
 			return
 		}
 
-		bh.sendToTemplate(nil, "Email confirmed! Now please Login", "inform.html", w)
+		bh.sendToTemplate(nil, "Email confirmed! Now please Login", inform, w)
 	}
 }
 
@@ -276,13 +296,6 @@ func (bh *BaseHandler) loginPost(temp string) http.HandlerFunc {
 			return
 		}
 
-		text := ""
-		if !user.IsAdmin {
-			text = "Welcome, " + user.Email + "! Your role: user."
-		} else {
-			text = "Welcome, " + user.Email + "! Your role: admin. Your know flag: sbmt_ctf_appsec_admin_always_knows_all_flags"
-		}
-
 		session := createSession(strconv.Itoa(user.ID), bh.secretKey)
 		cookie := &http.Cookie{
 			Name:     cookieName,
@@ -293,7 +306,7 @@ func (bh *BaseHandler) loginPost(temp string) http.HandlerFunc {
 		}
 		http.SetCookie(w, cookie)
 
-		bh.sendToTemplate(nil, text, "index.html", w)
+		http.Redirect(w, req, "/", 302)
 	}
 }
 
@@ -334,7 +347,7 @@ func (bh *BaseHandler) resetPassPost(temp string) http.HandlerFunc {
 			return
 		}
 
-		bh.sendToTemplate(nil, "We send confirmation to: "+email+", please check email", "inform.html", w)
+		bh.sendToTemplate(nil, "We send confirmation to: "+email+", please check email", inform, w)
 	}
 }
 
@@ -399,7 +412,7 @@ func (bh *BaseHandler) confirmResetPassPost(temp string) http.HandlerFunc {
 			return
 		}
 
-		bh.sendToTemplate(nil, "Password updated! Now Login please", "inform.html", w)
+		bh.sendToTemplate(nil, "Password updated! Now Login please", inform, w)
 
 	}
 }

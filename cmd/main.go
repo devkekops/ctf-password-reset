@@ -24,7 +24,8 @@ func main() {
 	flag.StringVar(&cfg.SMTPHost, "h", cfg.SMTPHost, "smtp host")
 	flag.StringVar(&cfg.SMTPLogin, "l", cfg.SMTPLogin, "smtp login")
 	flag.StringVar(&cfg.SMTPPassword, "p", cfg.SMTPPassword, "smtp password")
-	flag.StringVar(&cfg.FromEmail, "f", cfg.FromEmail, "from email")
+	flag.StringVar(&cfg.FromEmail, "s", cfg.FromEmail, "from email")
+	flag.StringVar(&cfg.Flag, "f", cfg.Flag, "flag")
 	flag.Parse()
 
 	log.Fatal(server.Serve(&cfg))

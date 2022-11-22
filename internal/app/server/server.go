@@ -15,7 +15,7 @@ func Serve(cfg *config.Config) error {
 	var userRepo storage.UserRepository
 	userRepo = storage.NewUserRepo(cfg.AdminEmail, cfg.AdminPassword, cfg.ServerAddress, client)
 
-	var baseHandler = handlers.NewBaseHandler(userRepo, cfg.SecretKey)
+	var baseHandler = handlers.NewBaseHandler(userRepo, cfg.SecretKey, cfg.Flag)
 
 	server := &http.Server{
 		Addr:    cfg.ServerAddress,

@@ -9,4 +9,5 @@ type Config struct {
 	SMTPLogin     string `env:"SMTP_LOGIN"`
 	SMTPPassword  string `env:"SMTP_PASSWORD"`
 	FromEmail     string `env:"FROM_EMAIL"`
+	Flag          string `env:"FLAG"`
 }

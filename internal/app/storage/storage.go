@@ -34,6 +34,7 @@ type User struct {
 
 type UserRepository interface {
 	GetUserByID(ID int) (User, error)
+	GetAllUsers() []User
 	CreateUser(email string, password string) (string, error)
 	ConfirmUser(email string, confirmationCode string) error
 	AuthUser(email string, password string) (User, error)
@@ -130,6 +131,14 @@ func (r *UserRepo) GetUserByID(ID int) (User, error) {
 		}
 	}
 	return User{}, ErrUserWithGivenIDDoesNotExist
+}
+
+func (r *UserRepo) GetAllUsers() []User {
+	var users []User
+	for _, user := range r.emailToUserMap {
+		users = append(users, user)
+	}
+	return users
 }
 
 func (r *UserRepo) CreateUser(email string, password string) (string, error) {
